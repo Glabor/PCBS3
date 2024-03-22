@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>TESTING NEW BOARD</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" type="text/css" href="style.css" />
+  </head>
+  <body>
+    <a href="/"><h1>ESP32-S3 PCB</h1></a>
+    <p>
+      <span
+        ><form action="javascript:testGet();">
+          ID <span class="obj">%ID%</span>
+          <input type="text" name="input" id="idInput" class="output" />
+          <input type="submit" class="output" /></form
+      ></span>
+    </p>
+
+    <p>
+      <span
+        ><form
+          action="javascript:websocket.send(JSON.stringify({
+          blink: document.getElementById('blinkInput').value,
+        }))"
+        >
+          Blink delay <span class="obj">%BLINK%</span>
+          <input type="text" name="input" id="blinkInput" class="output" />
+          <input type="submit" class="output" /></form
+      ></span>
+    </p>
+
+    <p>
+      GPIO state:
+      <span id="BOOT0" data-status="ON" class="obj">ON</span>
+    </p>
+    <p>
+      Color :
+      <span class="obj">
+        <button class="button" onclick="websocket.send('on')">PINK</button>
+        <button class="button button2" onclick="websocket.send('off')">
+          BLUE
+        </button>
+      </span>
+    </p>
+    <p>time : <span class="obj">%TIMESTAMP%</span></p>
+    <p>
+      Sleep for 5s :
+      <button class="button rtc obj" onclick="websocket.send('alarm')">
+        ALARM
+      </button>
+    </p>
+    <p>
+      Synchronize RTC :
+      <button class="button rtc obj" onclick="websocket.send('sync')">
+        SYNC
+      </button>
+    </p>
+    <p>
+      Battery level :
+      <span class="obj">%BATTERY%</span>
+    </p>
+    <p>
+      i2c accelerometer :
+      <span class="obj">
+        <button class="button lsm" onclick="websocket.send('lsm')">
+          LSM6DSO
+        </button>
+        <button class="button lsm" onclick="websocket.send('s_lsm')">
+          SAVE
+        </button>
+      </span>
+      <span id="lsm" class="output">_____</span>
+    </p>
+    <p>
+      spi accelermoter :
+      <span class="obj">
+        <button class="button adxl" onclick="websocket.send('adxl')">
+          ADXL375
+        </button>
+        <button class="button adxl" onclick="websocket.send('s_adxl')">
+          SAVE
+        </button>
+      </span>
+      <span id="adxl" class="output">_____</span>
+    </p>
+    <p>
+      inductive sensor :
+      <span class="obj">
+        <button class="button sick" onclick="websocket.send('sick')">
+          SICK
+        </button>
+        <button class="button sick" onclick="websocket.send('s_sick')">
+          SAVE
+        </button>
+      </span>
+      <span id="sick" class="output">_____</span>
+    </p>
+
+    <p>general monitor : <span id="print" class="output">_____</span></p>
+    <p><a href="/sd"> >Files in mem</a></p>
+    <p><a href="/update"> >Update</a></p>
+    <div id="status"></div>
+    <p>
+      Restart
+      <button class="button restart obj" onclick="websocket.send('restart')">
+        RESTART
+      </button>
+    </p>
+
+    <script src="script.js"></script>
+  </body>
+</html>
