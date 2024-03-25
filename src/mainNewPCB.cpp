@@ -13,6 +13,7 @@
 #include <Arduino_JSON.h>
 #include <ESPmDNS.h>
 #include <ElegantOTA.h>
+#include <HTTPClient.h>
 #include <Preferences.h>
 #include <RHSoftwareSPI.h>
 #include <RH_RF95.h>
@@ -36,7 +37,7 @@
 #define ADXL375_CS 2
 #define LORA_CS 12
 #define ON_SICK 13
-#define SICK1 6
+#define SICK1 7
 #define RFM95_RST 10
 #define RFM95_INT 11
 #define RFM95_CS 12
@@ -82,6 +83,7 @@ int id = 0;
 int blink = 0;
 bool chg = false; // bool to know if system is on charge and needs to adapt
 
+int genVar = 5;
 int printInt = 0;
 bool bLSM = false;
 bool bS_LSM = false;
@@ -90,6 +92,21 @@ bool bS_SICK = false;
 bool bADXL = false;
 bool bSick = false;
 bool bLora = false;
+bool bWifi = false;
+
+unsigned int to = 2;
+String uid = "04 71 F1 79 B6 2A 81";
+String serv = "http://10.42.0.1:5555/up/"; // raspi
+int battSend;
+
+String serverNameVar = serv + "var/";
+String serverName = serv + "post/";
+String serverNameUp = serv + "update/";
+String serverNameDL = serv + "dl/";
+String serverReadyUp = serv + "readyUp/";
+String serverReadyDL = serv + "readyDL/";
+String serverUID = serv + "postUID/";
+String serverVAR = serv + "postVAR/";
 
 void handleWebSocketMessage(void *arg, uint8_t *data, size_t len);
 
@@ -175,6 +192,7 @@ float measBatt() {
         cellVolt = (float)((float)((float)(cellVolt * (count - 1)) + (float)analogRead(battPin)) / (float)count); // reading pin to measure battery level
     }
     cellVolt = cellVolt / 4096 * 3.3 * 2; // convert measure from 12bytes to volts
+    battSend = cellVolt * 100;
     return cellVolt;
 }
 
@@ -398,6 +416,9 @@ String ledProcessor(const String &var) {
 
         return (String(idRead));
     }
+    if (var == "GENERAL") {
+        return (String(genVar));
+    }
     if (var == "BATTERY") {
         return (String(measBatt()) + "V   --   " + String(rtc.getTemperature()) + "&degC");
     }
@@ -556,7 +577,7 @@ bool initSPIFFS() {
     return true;
 }
 
-void wifiConnect() {
+bool wifiConnect() {
     // Connect to Wi-Fi
     // WiFi.begin(ssid, password);
     WiFi.begin(ssid);
@@ -564,7 +585,7 @@ void wifiConnect() {
         delay(500);
         neopixelWrite(LED, bright, 0, 0); // R
         delay(500);
-        neopixelWrite(LED, 0, 0, 0); // R
+        neopixelWrite(LED, 0, 0, 0); // 0
         Serial.println("Connecting to WiFi..");
     }
     delay(500);
@@ -572,6 +593,7 @@ void wifiConnect() {
     delay(1000);
     // Print ESP32 Local IP Address
     Serial.println(WiFi.localIP());
+    return true;
 }
 
 void initBlink() {
@@ -665,7 +687,7 @@ void saveSens(String sens) {
         }
     }
 
-    int accTime = 10;
+    int accTime = genVar;
     // String fn = "/" + sens + ".bin";
     String fn = name;
     Serial.println(fn);
@@ -755,7 +777,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
             neopixelWrite(LED, color[0], color[1], color[2]); // rose
             // neopixelWrite(LED, 0, bright, bright); // cyan
         } else if (message == "alarm") {
-            goSleep(5);
+            goSleep(genVar);
         } else if (message == "restart") {
             ESP.restart();
         } else if (message == "sync") {
@@ -787,7 +809,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
                 id = String((const char *)myObject["id"]).toInt();
 
                 preferences.begin("prefid", false);
-                id = preferences.putUInt("id", id);
+                preferences.putUInt("id", id);
                 preferences.end();
             }
             if (myObject.hasOwnProperty("blink")) {
@@ -796,8 +818,12 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
                 blink = String((const char *)myObject["blink"]).toInt();
 
                 preferences.begin("prefid", false);
-                id = preferences.putUInt("blink", blink);
+                preferences.putUInt("blink", blink);
                 preferences.end();
+            }
+            if (myObject.hasOwnProperty("gen")) {
+                prints["print"] = String((const char *)myObject["gen"]).toInt();
+                genVar = String((const char *)myObject["gen"]).toInt();
             }
         }
 
@@ -897,21 +923,21 @@ void setup() {
     }
 
     serverRoutes();
-    wifiConnect();
-    if (!MDNS.begin("esp32")) {
-        Serial.println("Error setting up MDNS responder!");
-        while (1) {
-            delay(1000);
-        }
-    }
-    Serial.println("mDNS responder started");
+    // wifiConnect();
+    // if (!MDNS.begin("esp32")) {
+    //     Serial.println("Error setting up MDNS responder!");
+    //     while (1) {
+    //         delay(1000);
+    //     }
+    // }
+    // Serial.println("mDNS responder started");
 
     color[0] = bright;
     color[1] = bright / 2;
     color[2] = 0;
 
     ElegantOTA.begin(&server); // Start ElegantOTA
-    server.begin();
+    // server.begin();
     // neopixelWrite(LED, bright, bright / 2, 0); // Orange
 }
 
@@ -920,77 +946,224 @@ int lastTime = 0;
 bool bBoot0 = false;
 int lastBlink = 0;
 bool bBlink = false;
+int comDelay = 5;
+int lastCom = 0;
+// Function to combine RGB components into a 32-bit color value
+uint32_t neopixelColor(uint8_t red, uint8_t green, uint8_t blue) {
+    return (uint32_t(red) << 16) | (uint32_t(green) << 8) | blue;
+}
+
+// Function to convert a Wheel position to RGB color
+uint32_t Wheel(byte WheelPos) {
+    WheelPos = 255 - WheelPos;
+    if (WheelPos < 85) {
+        return neopixelColor(255 - WheelPos * 3, 0, WheelPos * 3);
+    }
+    if (WheelPos < 170) {
+        WheelPos -= 85;
+        return neopixelColor(0, WheelPos * 3, 255 - WheelPos * 3);
+    }
+    WheelPos -= 170;
+    return neopixelColor(WheelPos * 3, 255 - WheelPos * 3, 0);
+}
+
+// Function to set RGB color using neopixelWrite
+void setRGBColor(uint8_t red, uint8_t green, uint8_t blue) {
+    neopixelWrite(LED, red, green, blue);
+}
+
+// Function to create a rainbow effect using neopixelWrite for a single RGB LED
+void rainbowLoop(int wait) {
+    for (int j = 0; j < 256; j++) {
+        // Calculate color based on position and current rainbow value (j)
+        uint32_t color = Wheel(((j * 3) + 0) & 255); // Incrementing by 3 for a single RGB LED
+
+        // Extract individual RGB components
+        uint8_t red = (color >> 16) & 0xFF;
+        uint8_t green = (color >> 8) & 0xFF;
+        uint8_t blue = color & 0xFF;
+
+        // Set the RGB color on the LED using neopixelWrite
+        setRGBColor(red / 20, green / 20, blue / 20);
+
+        delay(wait);
+    }
+}
+
+int httpPostRequest(String serverName, String postText) {
+    WiFiClient client;
+    HTTPClient http;
+    int response = 0;
+    // Your Domain name with URL path or IP address with path
+    http.begin(client, serverName);
+    // Send HTTP POST request
+    http.addHeader("Content-Type", "text/plain");
+    int httpResponseCode = http.POST(postText);
+
+    Serial.print("HTTP Response code: ");
+    Serial.println(httpResponseCode);
+    // Free resources
+    if (httpResponseCode > 0) {
+        response = http.getString().toInt();
+        Serial.println("text from post: " + String(response));
+    }
+    http.end();
+    return response;
+}
+
+void varUpdate(void) {
+    to = httpPostRequest(serverVAR, uid);
+    to = (to != 0) ? to : 5;
+    Serial.println("got var : " + String(to));
+    preferences.begin("charger", false);
+    Serial.print("previous to : ");
+    Serial.println(preferences.getUInt("to", 2));
+    to = preferences.putUInt("to", to);
+    Serial.println("to: " + String(preferences.getUInt("to", 2)));
+    preferences.end();
+}
+
+void checkUID() {
+    int upCode = httpPostRequest(serverUID, uid);
+    Serial.println("received from postUID : " + String(upCode));
+    if (upCode > 0) {
+        unsigned long upMillis = millis();
+        int upCount = 0;
+        server.begin();
+        // TODO set alarm 2min (so it doesnt clear in the middle and cannot get set again (or check when setting if its triggered))
+        while (upCount < 30) {
+            if (millis() - upMillis > 2000) {
+                rtc.setAlarm1(rtc.now() + 10, DS3231_A1_Date);
+                upCount++;
+                upMillis = millis();
+                Serial.print(".");
+            }
+        }
+        Serial.println("");
+    }
+}
+
+void sendBatt() {
+    int responseCode = httpPostRequest(serverName, String(battSend));
+    if (responseCode > 0) {
+        return;
+    }
+}
+
+void sendFlask() {
+    int responseCode = httpPostRequest("http://10.42.0.1:5000/batt", String(battSend));
+    if (responseCode > 0) {
+        return;
+    }
+}
 
 void loop() {
-    ElegantOTA.loop();
+    if (chg) {
+        if (WiFi.status() != WL_CONNECTED) {
+            wifiConnect();
+            server.begin();
 
-    if ((millis() - lastBlink) > (blink * 100)) {
-        if (bBlink) {
-            neopixelWrite(LED, color[0], color[1], color[2]);
         } else {
-            neopixelWrite(LED, 0, 0, 0);
-        }
-        bBlink = !bBlink;
-        lastBlink = millis();
-    }
+            ElegantOTA.loop();
 
-    if ((millis() - lastTime) > timerDelay) {
-        bool bBoot0Change = (digitalRead(BOOT0) != bBoot0);
-        bBoot0 = bBoot0Change ? !bBoot0 : bBoot0;
-        prints["BOOT0"] = bBoot0 ? "ON" : "OFF";
-
-        if (bSick) {
-            float sickMeas = analogRead(SICK1);
-            Serial.println(sickMeas);
-            prints["sick"] = String(sickMeas);
-        }
-        if (bLSM) {
-            dsox.getEvent(&accel, &gyro, &temp);
-            prints["lsm"] = String(accel.acceleration.x) + ',' +
-                            String(accel.acceleration.y) + ',' +
-                            String(accel.acceleration.z);
-        }
-        if (bS_LSM) {
-            saveSens("lsm");
-            bS_LSM = false;
-            neopixelWrite(LED, bright, bright / 2, 0); // Orange
-        }
-        if (bS_ADXL) {
-            saveSens("adxl");
-            bS_ADXL = false;
-            neopixelWrite(LED, bright, bright / 2, 0); // Orange
-        }
-        if (bS_SICK) {
-            saveSens("sick");
-            bS_SICK = false;
-            neopixelWrite(LED, bright, bright / 2, 0); // Orange
-        }
-        if (bADXL) {
-            adxlSetup();
-            sensors_event_t event;
-            adxl.getEvent(&event);
-            Serial.println(event.acceleration.x);
-            prints["adxl"] = String(event.acceleration.x) + ',' +
-                             String(event.acceleration.y) + ',' +
-                             String(event.acceleration.z);
-        }
-        if (bBoot0Change) {
-            if (rf95Setup()) {
-                byte buf[2];
-                int sendSize = 2;
-                buf[0] = highByte(2);
-                buf[1] = lowByte(2);
-                rf95.send((uint8_t *)buf, sendSize);
-                rf95.waitPacketSent();
+            if ((millis() - lastBlink) > (blink * 100)) {
+                float colorB[3] = {};
+                if (bBlink) {
+                    colorB[0] = color[0];
+                    colorB[1] = color[1];
+                    colorB[2] = color[2];
+                } else {
+                    colorB[0] = 0;
+                    colorB[1] = 0;
+                    colorB[2] = 0;
+                }
+                neopixelWrite(LED, colorB[0], colorB[1], colorB[2]);
+                bBlink = !bBlink;
+                lastBlink = millis();
             }
-            Serial.println("boot0");
+
+            if ((millis() - lastTime) > timerDelay) {
+                bool bBoot0Change = (digitalRead(BOOT0) != bBoot0);
+                bBoot0 = bBoot0Change ? !bBoot0 : bBoot0;
+                prints["BOOT0"] = bBoot0 ? "ON" : "OFF";
+
+                if (bSick) {
+                    float sickMeas = analogRead(SICK1);
+                    Serial.println(sickMeas);
+                    prints["sick"] = String(sickMeas);
+                }
+                if (bLSM) {
+                    dsox.getEvent(&accel, &gyro, &temp);
+                    prints["lsm"] = String(accel.acceleration.x) + ',' +
+                                    String(accel.acceleration.y) + ',' +
+                                    String(accel.acceleration.z);
+                }
+                if (bS_LSM) {
+                    saveSens("lsm");
+                    bS_LSM = false;
+                    neopixelWrite(LED, bright, bright / 2, 0); // Orange
+                }
+                if (bS_ADXL) {
+                    saveSens("adxl");
+                    bS_ADXL = false;
+                    neopixelWrite(LED, bright, bright / 2, 0); // Orange
+                }
+                if (bS_SICK) {
+                    saveSens("sick");
+                    bS_SICK = false;
+                    neopixelWrite(LED, bright, bright / 2, 0); // Orange
+                }
+                if (bADXL) {
+                    adxlSetup();
+                    sensors_event_t event;
+                    adxl.getEvent(&event);
+                    Serial.println(event.acceleration.x);
+                    prints["adxl"] = String(event.acceleration.x) + ',' +
+                                     String(event.acceleration.y) + ',' +
+                                     String(event.acceleration.z);
+                }
+                if (bBoot0Change) {
+                    if (rf95Setup()) {
+                        byte buf[2];
+                        int sendSize = 2;
+                        buf[0] = highByte(2);
+                        buf[1] = lowByte(2);
+                        rf95.send((uint8_t *)buf, sendSize);
+                        rf95.waitPacketSent();
+                    }
+                    Serial.println("boot0");
+                }
+
+                if (bADXL || bLSM || bBoot0Change || bSick) {
+                    String stringPrints = JSON.stringify(prints);
+                    notifyClients(stringPrints);
+                    lastTime = millis();
+                }
+            }
+            if ((millis() - lastCom) > comDelay * 1000) {
+                rtc.clearAlarm(1);
+                rtc.setAlarm1(rtc.now() + 10, DS3231_A1_Date);
+
+                measBatt();
+
+                sendBatt();
+                checkUID();
+                varUpdate();
+                lastCom = millis();
+            }
+
+            ws.cleanupClients();
         }
 
-        if (bADXL || bLSM || bBoot0Change || bSick) {
-            String stringPrints = JSON.stringify(prints);
-            notifyClients(stringPrints);
-            lastTime = millis();
+    } else {
+        for (size_t i = 0; i < blink; i++) {
+            rainbowLoop(10);
         }
+        measBatt();
+        wifiConnect();
+        sendBatt();
+        sendFlask();
+        goSleep(20); /// 1800
+        ESP.restart();
     }
-    ws.cleanupClients();
 }

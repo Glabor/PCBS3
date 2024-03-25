@@ -31,6 +31,19 @@
     </p>
 
     <p>
+      <span
+        ><form
+          action="javascript:websocket.send(JSON.stringify({
+          gen: document.getElementById('genInput').value,
+        }))"
+        >
+          General Variable <span class="obj">%GENERAL%</span>
+          <input type="text" name="input" id="genInput" class="output" />
+          <input type="submit" class="output" /></form
+      ></span>
+    </p>
+
+    <p>
       GPIO state:
       <span id="BOOT0" data-status="ON" class="obj">ON</span>
     </p>
