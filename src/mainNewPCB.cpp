@@ -244,10 +244,11 @@ void handleFileList(AsyncWebServerRequest *request, String folderPath) {
     while (file) {
         if (file.isDirectory()) {
             String folderName = file.name();
-            html += "<li><a style='color:red;' href='/sd?folder=" + folderPath + "/" + folderName + "'>" + folderName + "/</a></li>";
+            html += "<li><a style='color:red;' href='/sd?folder=" + folderPath + "/" + folderName + "'>" + folderName + "/</a>      " +
+                    "<a href='/removeFolder?filename=" + String(file.path()) + "'>delete</ a> </li> ";
         } else {
-            html += "<li><a href='/download?filename=" + String(file.path()) + "'>" + String(file.path()) + "</a>   " +
-                    "<a href='/removeFile?filename=" + String(file.path()) + "'>delete</ a> </li > ";
+            html += "<li><a href='/download?filename=" + String(file.path()) + "'>" + String(file.path()) + "</a>     " +
+                    "<a href='/removeFile?filename=" + String(file.path()) + "'>delete</ a> </li> ";
         }
         file.close();
         file = root.openNextFile();
@@ -578,6 +579,31 @@ void serverRoutes() {
             remFile = p->value();
         }
         if (SD_MMC.remove(remFile)) {
+            neopixelWrite(LED, 0, bright, 0); // G
+            delay(50);
+        } else {
+            neopixelWrite(LED, bright, 0, 0); // R
+            delay(50);
+        };
+        request->redirect("/sd");
+    });
+
+    // Route to remove folder
+    server.on("/removeFolder", HTTP_GET, [](AsyncWebServerRequest *request) {
+        int paramsNr = request->params();
+        Serial.println(paramsNr);
+        String remFile = "/1/test1.txt";
+
+        for (int i = 0; i < paramsNr; i++) {
+            AsyncWebParameter *p = request->getParam(i);
+            Serial.print("Param name: ");
+            Serial.println(p->name());
+            Serial.print("Param value: ");
+            Serial.println(p->value());
+            Serial.println("------");
+            remFile = p->value();
+        }
+        if (SD_MMC.rmdir(remFile)) {
             neopixelWrite(LED, 0, bright, 0); // G
             delay(50);
         } else {
