@@ -616,6 +616,8 @@ void serverRoutes() {
     // server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     //     request->send(200, "text/plain", "ESP test ok");
     // });
+
+    Serial.println("server ok");
 }
 
 bool initSPIFFS() {
@@ -978,7 +980,6 @@ void setup() {
     }
 
     serverRoutes();
-    bWifi = true;
     // wifiConnect();
     // if (!MDNS.begin("esp32")) {
     //     Serial.println("Error setting up MDNS responder!");
@@ -1107,7 +1108,7 @@ void sendBatt() {
 }
 
 void sendFlask() {
-    int responseCode = httpPostRequest("http://10.42.0.1:5000/batt", String(battSend));
+    int responseCode = httpPostRequest("http://10.42.0.48:5000/batt", String(battSend) + "," + String(bWifi));
     if (responseCode > 0) {
         return;
     }
@@ -1203,6 +1204,7 @@ void loop() {
 
                     measBatt();
 
+                    sendFlask();
                     sendBatt();
                     checkUID();
                     varUpdate();
@@ -1212,19 +1214,26 @@ void loop() {
                 ws.cleanupClients();
             }
         } else {
-            measBatt();
-            wifiConnect();
-            sendBatt();
-            sendFlask();
-            WiFi.disconnect(true);
+            if ((millis() - lastCom) > comDelay * 1000) {
+                rtc.clearAlarm(1);
+                rtc.setAlarm1(rtc.now() + 10, DS3231_A1_Date);
+
+                measBatt();
+
+                sendFlask();
+                lastCom = millis();
+            }
         }
 
     } else {
         for (size_t i = 0; i < blink; i++) {
             rainbowLoop(10);
         }
+
         measBatt();
-        wifiConnect();
+        if (WiFi.status() != WL_CONNECTED) {
+            wifiConnect();
+        }
         sendBatt();
         sendFlask();
         goSleep(20); /// 1800
