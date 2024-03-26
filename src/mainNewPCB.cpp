@@ -246,7 +246,8 @@ void handleFileList(AsyncWebServerRequest *request, String folderPath) {
             String folderName = file.name();
             html += "<li><a style='color:red;' href='/sd?folder=" + folderPath + "/" + folderName + "'>" + folderName + "/</a></li>";
         } else {
-            html += "<li><a href='/download?filename=" + String(file.path()) + "'>" + String(file.path()) + "</a></li>";
+            html += "<li><a href='/download?filename=" + String(file.path()) + "'>" + String(file.path()) + "</a>   " +
+                    "<a href='/removeFile?filename=" + String(file.path()) + "'>delete</ a> </li > ";
         }
         file.close();
         file = root.openNextFile();
@@ -561,6 +562,31 @@ void serverRoutes() {
         request->send(SD_MMC, downFile, "text/plain", true);
     });
 
+    // Route to remove file
+    server.on("/removeFile", HTTP_GET, [](AsyncWebServerRequest *request) {
+        int paramsNr = request->params();
+        Serial.println(paramsNr);
+        String remFile = "/1/test1.txt";
+
+        for (int i = 0; i < paramsNr; i++) {
+            AsyncWebParameter *p = request->getParam(i);
+            Serial.print("Param name: ");
+            Serial.println(p->name());
+            Serial.print("Param value: ");
+            Serial.println(p->value());
+            Serial.println("------");
+            remFile = p->value();
+        }
+        if (SD_MMC.remove(remFile)) {
+            neopixelWrite(LED, 0, bright, 0); // G
+            delay(50);
+        } else {
+            neopixelWrite(LED, bright, 0, 0); // R
+            delay(50);
+        };
+        request->redirect("/sd");
+    });
+
     // server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     //     request->send(200, "text/plain", "ESP test ok");
     // });
@@ -786,6 +812,9 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
             bSick = !bSick;
             digitalWrite(ON_SICK, bSick);
             Serial.println("sick");
+        } else if (message == "wifi") {
+            bWifi = !bWifi;
+            Serial.println("wifi");
         } else if (message == "lsm") {
             bLSM = !bLSM;
             printInt = 0;
@@ -923,6 +952,7 @@ void setup() {
     }
 
     serverRoutes();
+    bWifi = true;
     // wifiConnect();
     // if (!MDNS.begin("esp32")) {
     //     Serial.println("Error setting up MDNS responder!");
@@ -1059,100 +1089,108 @@ void sendFlask() {
 
 void loop() {
     if (chg) {
-        if (WiFi.status() != WL_CONNECTED) {
-            wifiConnect();
-            server.begin();
+        if (bWifi) {
+            if (WiFi.status() != WL_CONNECTED) {
+                wifiConnect();
+                server.begin();
 
-        } else {
-            ElegantOTA.loop();
+            } else {
+                ElegantOTA.loop();
 
-            if ((millis() - lastBlink) > (blink * 100)) {
-                float colorB[3] = {};
-                if (bBlink) {
-                    colorB[0] = color[0];
-                    colorB[1] = color[1];
-                    colorB[2] = color[2];
-                } else {
-                    colorB[0] = 0;
-                    colorB[1] = 0;
-                    colorB[2] = 0;
-                }
-                neopixelWrite(LED, colorB[0], colorB[1], colorB[2]);
-                bBlink = !bBlink;
-                lastBlink = millis();
-            }
-
-            if ((millis() - lastTime) > timerDelay) {
-                bool bBoot0Change = (digitalRead(BOOT0) != bBoot0);
-                bBoot0 = bBoot0Change ? !bBoot0 : bBoot0;
-                prints["BOOT0"] = bBoot0 ? "ON" : "OFF";
-
-                if (bSick) {
-                    float sickMeas = analogRead(SICK1);
-                    Serial.println(sickMeas);
-                    prints["sick"] = String(sickMeas);
-                }
-                if (bLSM) {
-                    dsox.getEvent(&accel, &gyro, &temp);
-                    prints["lsm"] = String(accel.acceleration.x) + ',' +
-                                    String(accel.acceleration.y) + ',' +
-                                    String(accel.acceleration.z);
-                }
-                if (bS_LSM) {
-                    saveSens("lsm");
-                    bS_LSM = false;
-                    neopixelWrite(LED, bright, bright / 2, 0); // Orange
-                }
-                if (bS_ADXL) {
-                    saveSens("adxl");
-                    bS_ADXL = false;
-                    neopixelWrite(LED, bright, bright / 2, 0); // Orange
-                }
-                if (bS_SICK) {
-                    saveSens("sick");
-                    bS_SICK = false;
-                    neopixelWrite(LED, bright, bright / 2, 0); // Orange
-                }
-                if (bADXL) {
-                    adxlSetup();
-                    sensors_event_t event;
-                    adxl.getEvent(&event);
-                    Serial.println(event.acceleration.x);
-                    prints["adxl"] = String(event.acceleration.x) + ',' +
-                                     String(event.acceleration.y) + ',' +
-                                     String(event.acceleration.z);
-                }
-                if (bBoot0Change) {
-                    if (rf95Setup()) {
-                        byte buf[2];
-                        int sendSize = 2;
-                        buf[0] = highByte(2);
-                        buf[1] = lowByte(2);
-                        rf95.send((uint8_t *)buf, sendSize);
-                        rf95.waitPacketSent();
+                if ((millis() - lastBlink) > (blink * 100)) {
+                    float colorB[3] = {};
+                    if (bBlink) {
+                        colorB[0] = color[0];
+                        colorB[1] = color[1];
+                        colorB[2] = color[2];
+                    } else {
+                        colorB[0] = 0;
+                        colorB[1] = 0;
+                        colorB[2] = 0;
                     }
-                    Serial.println("boot0");
+                    neopixelWrite(LED, colorB[0], colorB[1], colorB[2]);
+                    bBlink = !bBlink;
+                    lastBlink = millis();
                 }
 
-                if (bADXL || bLSM || bBoot0Change || bSick) {
-                    String stringPrints = JSON.stringify(prints);
-                    notifyClients(stringPrints);
-                    lastTime = millis();
+                if ((millis() - lastTime) > timerDelay) {
+                    bool bBoot0Change = (digitalRead(BOOT0) != bBoot0);
+                    bBoot0 = bBoot0Change ? !bBoot0 : bBoot0;
+                    prints["BOOT0"] = bBoot0 ? "ON" : "OFF";
+
+                    if (bSick) {
+                        float sickMeas = analogRead(SICK1);
+                        Serial.println(sickMeas);
+                        prints["sick"] = String(sickMeas);
+                    }
+                    if (bLSM) {
+                        dsox.getEvent(&accel, &gyro, &temp);
+                        prints["lsm"] = String(accel.acceleration.x) + ',' +
+                                        String(accel.acceleration.y) + ',' +
+                                        String(accel.acceleration.z);
+                    }
+                    if (bS_LSM) {
+                        saveSens("lsm");
+                        bS_LSM = false;
+                        neopixelWrite(LED, bright, bright / 2, 0); // Orange
+                    }
+                    if (bS_ADXL) {
+                        saveSens("adxl");
+                        bS_ADXL = false;
+                        neopixelWrite(LED, bright, bright / 2, 0); // Orange
+                    }
+                    if (bS_SICK) {
+                        saveSens("sick");
+                        bS_SICK = false;
+                        neopixelWrite(LED, bright, bright / 2, 0); // Orange
+                    }
+                    if (bADXL) {
+                        adxlSetup();
+                        sensors_event_t event;
+                        adxl.getEvent(&event);
+                        Serial.println(event.acceleration.x);
+                        prints["adxl"] = String(event.acceleration.x) + ',' +
+                                         String(event.acceleration.y) + ',' +
+                                         String(event.acceleration.z);
+                    }
+                    if (bBoot0Change) {
+                        if (rf95Setup()) {
+                            byte buf[2];
+                            int sendSize = 2;
+                            buf[0] = highByte(2);
+                            buf[1] = lowByte(2);
+                            rf95.send((uint8_t *)buf, sendSize);
+                            rf95.waitPacketSent();
+                        }
+                        Serial.println("boot0");
+                    }
+
+                    if (bADXL || bLSM || bBoot0Change || bSick) {
+                        String stringPrints = JSON.stringify(prints);
+                        notifyClients(stringPrints);
+                        lastTime = millis();
+                    }
                 }
+                if ((millis() - lastCom) > comDelay * 1000) {
+                    rtc.clearAlarm(1);
+                    rtc.setAlarm1(rtc.now() + 10, DS3231_A1_Date);
+
+                    measBatt();
+
+                    sendBatt();
+                    checkUID();
+                    varUpdate();
+                    lastCom = millis();
+                }
+
+                ws.cleanupClients();
             }
-            if ((millis() - lastCom) > comDelay * 1000) {
-                rtc.clearAlarm(1);
-                rtc.setAlarm1(rtc.now() + 10, DS3231_A1_Date);
-
-                measBatt();
-
-                sendBatt();
-                checkUID();
-                varUpdate();
-                lastCom = millis();
-            }
-
-            ws.cleanupClients();
+        } else {
+            measBatt();
+            wifiConnect();
+            sendBatt();
+            sendFlask();
+            WiFi.disconnect(true);
         }
 
     } else {
