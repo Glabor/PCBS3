@@ -81,7 +81,8 @@ RH_RF95 rf95(RFM95_CS, RFM95_INT, rhSPI);
 Preferences preferences;
 int id = 0;
 int blink = 0;
-bool chg = false; // bool to know if system is on charge and needs to adapt
+bool chg = false;    // bool to know if system is on charge and needs to adapt
+bool manual = false; // bool to know if system is on charge and needs to adapt
 
 int genVar = 5;
 int printInt = 0;
@@ -980,6 +981,7 @@ void setup() {
     }
 
     serverRoutes();
+    bWifi = true;
     // wifiConnect();
     // if (!MDNS.begin("esp32")) {
     //     Serial.println("Error setting up MDNS responder!");
@@ -1108,23 +1110,28 @@ void sendBatt() {
 }
 
 void sendFlask() {
-    int responseCode = httpPostRequest("http://10.42.0.48:5000/batt", String(battSend) + "," + String(bWifi));
+    int responseCode = httpPostRequest("http://10.42.0.49:5000/batt", String(battSend) + "," + String(bWifi));
     if (responseCode > 0) {
         return;
     }
 }
 
 void loop() {
-    if (chg) {
+    if (chg || manual) {
         if (bWifi) {
+            // neopixelWrite(LED, bright, bright, bright);
+            // delay(20);
+
             if (WiFi.status() != WL_CONNECTED) {
                 wifiConnect();
                 server.begin();
 
             } else {
+                // if wifi is connected
                 ElegantOTA.loop();
 
                 if ((millis() - lastBlink) > (blink * 100)) {
+                    // blinking
                     float colorB[3] = {};
                     if (bBlink) {
                         colorB[0] = color[0];
@@ -1141,6 +1148,7 @@ void loop() {
                 }
 
                 if ((millis() - lastTime) > timerDelay) {
+                    // sending with websockets
                     bool bBoot0Change = (digitalRead(BOOT0) != bBoot0);
                     bBoot0 = bBoot0Change ? !bBoot0 : bBoot0;
                     prints["BOOT0"] = bBoot0 ? "ON" : "OFF";
@@ -1198,10 +1206,13 @@ void loop() {
                         lastTime = millis();
                     }
                 }
-                if ((millis() - lastCom) > comDelay * 1000) {
-                    rtc.clearAlarm(1);
-                    rtc.setAlarm1(rtc.now() + 10, DS3231_A1_Date);
 
+                if ((millis() - lastCom) > comDelay * 1000) {
+                    // com with server
+                    rtc.setAlarm1(rtc.now() + 10, DS3231_A1_Date);
+                    if (!manual) {
+                        rtc.clearAlarm(1);
+                    }
                     measBatt();
 
                     sendFlask();
@@ -1215,8 +1226,10 @@ void loop() {
             }
         } else {
             if ((millis() - lastCom) > comDelay * 1000) {
-                rtc.clearAlarm(1);
                 rtc.setAlarm1(rtc.now() + 10, DS3231_A1_Date);
+                if (!manual) {
+                    rtc.clearAlarm(1);
+                }
 
                 measBatt();
 
@@ -1233,10 +1246,20 @@ void loop() {
         measBatt();
         if (WiFi.status() != WL_CONNECTED) {
             wifiConnect();
+            server.begin();
         }
-        sendBatt();
+        // sendBatt();
         sendFlask();
-        goSleep(20); /// 1800
-        ESP.restart();
+        int waitTime = millis();
+        while (millis() - waitTime < 1000) {
+        }
+        server.end();
+        WiFi.disconnect(true);
+        if (!bWifi) {
+            goSleep(20); /// 1800
+            ESP.restart();
+        } else {
+            manual = true;
+        }
     }
 }
