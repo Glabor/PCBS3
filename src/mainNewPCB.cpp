@@ -1137,10 +1137,16 @@ void sendBatt() {
 }
 
 bool noFlask = false;
+int countFlask = 0;
 void sendFlask() {
     int responseCode = httpPostRequest("http://10.42.0.48:5000/batt", String(battSend) + "," + String(bWifi));
     Serial.println(responseCode);
     if (responseCode > 0) {
+        noFlask = false;
+        color[0] = bright;
+        color[1] = bright / 2;
+        color[2] = 0;
+
         wifiTO = millis() + 30 * 1000;
         if (manual) {
             manualTO = millis() + 30 * 1000;
@@ -1248,8 +1254,11 @@ void loop() {
                         rtc.clearAlarm(1);
                     }
                     measBatt();
-                    if (!noFlask) {
+                    if (!noFlask || countFlask > 5) {
+                        countFlask = 0;
                         sendFlask();
+                    } else {
+                        countFlask++;
                     }
                     // sendBatt();
                     // checkUID();
@@ -1266,7 +1275,7 @@ void loop() {
                     if (bBlink) {
                         colorB[0] = bright;
                         colorB[1] = 0;
-                        colorB[2] = 0;
+                        colorB[2] = bright / 4;
                     } else {
                         colorB[0] = 0;
                         colorB[1] = 0;
@@ -1283,7 +1292,27 @@ void loop() {
                 WiFi.disconnect(true);
             }
         } else {
+            server.end();
+            WiFi.disconnect(true);
+
             // dont connect to wifi
+            if ((millis() - lastBlink) > (blink * 100)) {
+                // blinking red
+                float colorB[3] = {};
+                if (bBlink) {
+                    colorB[0] = bright;
+                    colorB[1] = 0;
+                    colorB[2] = bright / 4;
+                } else {
+                    colorB[0] = 0;
+                    colorB[1] = 0;
+                    colorB[2] = 0;
+                }
+                neopixelWrite(LED, colorB[0], colorB[1], colorB[2]);
+                bBlink = !bBlink;
+                lastBlink = millis();
+            }
+
             if ((millis() - lastCheck) > checkDelay * 1000) {
                 rtc.setAlarm1(rtc.now() + 10, DS3231_A1_Date);
                 if (!manual) {
@@ -1293,8 +1322,11 @@ void loop() {
                 measBatt();
                 if (wifiConnect()) {
                     // server.begin();
-                    if (!noFlask) {
+                    if (!noFlask || countFlask > 5) {
+                        countFlask = 0;
                         sendFlask();
+                    } else {
+                        countFlask++;
                     }
                 }
                 lastCheck = millis();
@@ -1315,8 +1347,11 @@ void loop() {
         measBatt();
         if (wifiConnect()) {
             // server.begin();
-            if (!noFlask) {
+            if (!noFlask || countFlask > 5) {
+                countFlask = 0;
                 sendFlask();
+            } else {
+                countFlask++;
             }
         }
         // int waitTime = millis();
