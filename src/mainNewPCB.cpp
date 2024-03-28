@@ -47,6 +47,10 @@
 
 // Replace with your network credentials
 const char *ssid = "chgServer";
+
+const char *soft_ap_ssid = "MyESP32AP";
+const char *soft_ap_password = "testpassword";
+
 // const char *ssid = "iPhone Guillaume";
 // const char *password = "luminaire";
 const char *ntpServer = "pool.ntp.org";
@@ -83,6 +87,8 @@ int id = 0;
 int blink = 0;
 bool chg = false;    // bool to know if system is on charge and needs to adapt
 bool manual = false; // bool to know if system is on charge and needs to adapt
+int manualTO;
+int wifiTO;
 
 int genVar = 5;
 int printInt = 0;
@@ -634,21 +640,36 @@ bool initSPIFFS() {
 
 bool wifiConnect() {
     // Connect to Wi-Fi
-    // WiFi.begin(ssid, password);
-    WiFi.begin(ssid);
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        neopixelWrite(LED, bright, 0, 0); // R
-        delay(500);
-        neopixelWrite(LED, 0, 0, 0); // 0
-        Serial.println("Connecting to WiFi..");
+    int count1 = 0;
+    int count2 = 0;
+    WiFi.mode(WIFI_MODE_APSTA);
+    if (WiFi.status() != WL_CONNECTED) {
+        while (count1 < 3 && (WiFi.status() != WL_CONNECTED)) {
+            count1++;
+            // WiFi.begin(ssid, password);
+            WiFi.begin(ssid);
+            while (count2 < 3 && (WiFi.status() != WL_CONNECTED)) {
+                count2++;
+                delay(500);
+                neopixelWrite(LED, bright, 0, 0); // R
+                delay(500);
+                neopixelWrite(LED, 0, 0, 0); // 0
+                delay(500);
+                Serial.println("Connecting to WiFi..");
+            }
+            if (WiFi.status() == WL_CONNECTED) {
+                neopixelWrite(LED, 0, bright, 0); // G
+                delay(1000);
+                Serial.println(WiFi.localIP());
+            } else {
+                WiFi.disconnect(true);
+            }
+        }
     }
-    delay(500);
-    neopixelWrite(LED, 0, bright, 0); // G
-    delay(1000);
-    // Print ESP32 Local IP Address
-    Serial.println(WiFi.localIP());
-    return true;
+    WiFi.softAP(soft_ap_ssid, soft_ap_password);
+    server.begin();
+
+    return (WiFi.status() == WL_CONNECTED);
 }
 
 void initBlink() {
@@ -843,6 +864,9 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
             Serial.println("sick");
         } else if (message == "wifi") {
             bWifi = !bWifi;
+            if (bWifi) {
+                wifiTO = millis() + 30 * 1000;
+            }
             Serial.println("wifi");
         } else if (message == "lsm") {
             bLSM = !bLSM;
@@ -982,6 +1006,7 @@ void setup() {
 
     serverRoutes();
     bWifi = true;
+    wifiTO = millis() + 30 * 1000;
     // wifiConnect();
     // if (!MDNS.begin("esp32")) {
     //     Serial.println("Error setting up MDNS responder!");
@@ -1006,7 +1031,9 @@ bool bBoot0 = false;
 int lastBlink = 0;
 bool bBlink = false;
 int comDelay = 5;
+int checkDelay = 15;
 int lastCom = 0;
+int lastCheck = 0;
 // Function to combine RGB components into a 32-bit color value
 uint32_t neopixelColor(uint8_t red, uint8_t green, uint8_t blue) {
     return (uint32_t(red) << 16) | (uint32_t(green) << 8) | blue;
@@ -1052,7 +1079,7 @@ void rainbowLoop(int wait) {
 int httpPostRequest(String serverName, String postText) {
     WiFiClient client;
     HTTPClient http;
-    int response = 0;
+    int response = -1;
     // Your Domain name with URL path or IP address with path
     http.begin(client, serverName);
     // Send HTTP POST request
@@ -1104,29 +1131,36 @@ void checkUID() {
 
 void sendBatt() {
     int responseCode = httpPostRequest(serverName, String(battSend));
-    if (responseCode > 0) {
+    if (responseCode >= 0) {
         return;
     }
 }
 
+bool noFlask = false;
 void sendFlask() {
-    int responseCode = httpPostRequest("http://10.42.0.49:5000/batt", String(battSend) + "," + String(bWifi));
+    int responseCode = httpPostRequest("http://10.42.0.48:5000/batt", String(battSend) + "," + String(bWifi));
+    Serial.println(responseCode);
     if (responseCode > 0) {
+        wifiTO = millis() + 30 * 1000;
+        if (manual) {
+            manualTO = millis() + 30 * 1000;
+        }
+        return;
+    } else if (responseCode == 0) {
         return;
     }
+    noFlask = true;
+    color[0] = bright / 2;
+    color[1] = 0;
+    color[2] = bright / 2;
+    return;
 }
 
 void loop() {
     if (chg || manual) {
         if (bWifi) {
-            // neopixelWrite(LED, bright, bright, bright);
-            // delay(20);
-
-            if (WiFi.status() != WL_CONNECTED) {
-                wifiConnect();
+            if (wifiConnect()) {
                 server.begin();
-
-            } else {
                 // if wifi is connected
                 ElegantOTA.loop();
 
@@ -1214,28 +1248,63 @@ void loop() {
                         rtc.clearAlarm(1);
                     }
                     measBatt();
-
-                    sendFlask();
-                    sendBatt();
-                    checkUID();
-                    varUpdate();
+                    if (!noFlask) {
+                        sendFlask();
+                    }
+                    // sendBatt();
+                    // checkUID();
+                    // varUpdate();
                     lastCom = millis();
                 }
 
                 ws.cleanupClients();
+            } else {
+                // no wifi
+                if ((millis() - lastBlink) > (blink * 100)) {
+                    // blinking red
+                    float colorB[3] = {};
+                    if (bBlink) {
+                        colorB[0] = bright;
+                        colorB[1] = 0;
+                        colorB[2] = 0;
+                    } else {
+                        colorB[0] = 0;
+                        colorB[1] = 0;
+                        colorB[2] = 0;
+                    }
+                    neopixelWrite(LED, colorB[0], colorB[1], colorB[2]);
+                    bBlink = !bBlink;
+                    lastBlink = millis();
+                }
+            }
+            if (millis() > wifiTO) {
+                bWifi = false;
+                server.end();
+                WiFi.disconnect(true);
             }
         } else {
-            if ((millis() - lastCom) > comDelay * 1000) {
+            // dont connect to wifi
+            if ((millis() - lastCheck) > checkDelay * 1000) {
                 rtc.setAlarm1(rtc.now() + 10, DS3231_A1_Date);
                 if (!manual) {
                     rtc.clearAlarm(1);
                 }
 
                 measBatt();
-
-                sendFlask();
-                lastCom = millis();
+                if (wifiConnect()) {
+                    // server.begin();
+                    if (!noFlask) {
+                        sendFlask();
+                    }
+                }
+                lastCheck = millis();
             }
+        }
+        if (manual && (millis() > manualTO)) {
+            server.end();
+            WiFi.disconnect(true);
+            goSleep(10);
+            ESP.restart();
         }
 
     } else {
@@ -1244,22 +1313,23 @@ void loop() {
         }
 
         measBatt();
-        if (WiFi.status() != WL_CONNECTED) {
-            wifiConnect();
-            server.begin();
+        if (wifiConnect()) {
+            // server.begin();
+            if (!noFlask) {
+                sendFlask();
+            }
         }
-        // sendBatt();
-        sendFlask();
-        int waitTime = millis();
-        while (millis() - waitTime < 1000) {
-        }
+        // int waitTime = millis();
+        // while (millis() - waitTime < 1000) {
+        // }
         server.end();
         WiFi.disconnect(true);
         if (!bWifi) {
-            goSleep(20); /// 1800
+            goSleep(20);
             ESP.restart();
         } else {
             manual = true;
+            manualTO = millis() + 30 * 1000;
         }
     }
 }
