@@ -46,7 +46,10 @@
 #define RF95_FREQ 433.0
 
 // Replace with your network credentials
-const char *ssid = "chgServer";
+// const char *ssid = "chgServer";
+// const char *password = "Sensar974";
+const char *ssid = "raspi-Wifi";
+const char *password = "sensarPWD";
 
 const char *soft_ap_ssid = "MyESP32AP";
 const char *soft_ap_password = "testpassword";
@@ -646,8 +649,8 @@ bool wifiConnect() {
     if (WiFi.status() != WL_CONNECTED) {
         while (count1 < 3 && (WiFi.status() != WL_CONNECTED)) {
             count1++;
-            // WiFi.begin(ssid, password);
-            WiFi.begin(ssid);
+            WiFi.begin(ssid, password);
+            // WiFi.begin(ssid);
             while (count2 < 3 && (WiFi.status() != WL_CONNECTED)) {
                 count2++;
                 delay(500);
@@ -667,6 +670,12 @@ bool wifiConnect() {
         }
     }
     WiFi.softAP(soft_ap_ssid, soft_ap_password);
+
+    if (!MDNS.begin("esp32")) {
+        Serial.println("Error setting up MDNS responder!");
+    }
+    Serial.println("mDNS responder started");
+
     server.begin();
 
     return (WiFi.status() == WL_CONNECTED);
@@ -967,7 +976,7 @@ void setup() {
     // RFspi.setPins(ADXL375_MISO, ADXL375_MOSI, ADXL375_SCK);
 
     pinMode(LED, OUTPUT);
-    pinMode(ADXL375_CS, OUTPUT);
+    pinMode(ADXL375_SCK, OUTPUT);
     pinMode(ADXL375_MOSI, OUTPUT);
     pinMode(ADXL375_MISO, INPUT_PULLDOWN);
     pinMode(ADXL375_CS, OUTPUT);
@@ -1008,13 +1017,6 @@ void setup() {
     bWifi = true;
     wifiTO = millis() + 30 * 1000;
     // wifiConnect();
-    // if (!MDNS.begin("esp32")) {
-    //     Serial.println("Error setting up MDNS responder!");
-    //     while (1) {
-    //         delay(1000);
-    //     }
-    // }
-    // Serial.println("mDNS responder started");
 
     color[0] = bright;
     color[1] = bright / 2;
@@ -1139,7 +1141,7 @@ void sendBatt() {
 bool noFlask = false;
 int countFlask = 0;
 void sendFlask() {
-    int responseCode = httpPostRequest("http://10.42.0.48:5000/batt", String(battSend) + "," + String(bWifi));
+    int responseCode = httpPostRequest("http://chg.local:5000/batt", String(battSend) + "," + String(bWifi));
     Serial.println(responseCode);
     if (responseCode > 0) {
         noFlask = false;
