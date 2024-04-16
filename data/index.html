@@ -34,6 +34,32 @@
       <span
         ><form
           action="javascript:websocket.send(JSON.stringify({
+          ssid: document.getElementById('ssidInput').value,
+        }))"
+        >
+          Wifi SSID <span class="obj">%SSID%</span>
+          <input type="text" name="input" id="ssidInput" class="output" />
+          <input type="submit" class="output" /></form
+      ></span>
+    </p>
+
+    <p>
+      <span
+        ><form
+          action="javascript:websocket.send(JSON.stringify({
+          pwd: document.getElementById('pwdInput').value,
+        }))"
+        >
+          Wifi password <span class="obj">%PWD%</span>
+          <input type="text" name="input" id="pwdInput" class="output" />
+          <input type="submit" class="output" /></form
+      ></span>
+    </p>
+
+    <p>
+      <span
+        ><form
+          action="javascript:websocket.send(JSON.stringify({
           gen: document.getElementById('genInput').value,
         }))"
         >

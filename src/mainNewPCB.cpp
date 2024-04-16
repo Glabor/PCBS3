@@ -10,7 +10,7 @@
 #include "WiFi.h"
 #include <Adafruit_ADXL375.h>
 #include <Adafruit_LSM6DSO32.h>
-#include <Arduino_JSON.h>
+#include <ArduinoJson.h>
 #include <ESPmDNS.h>
 #include <ElegantOTA.h>
 #include <HTTPClient.h>
@@ -48,11 +48,11 @@
 // Replace with your network credentials
 // const char *ssid = "chgServer";
 // const char *password = "Sensar974";
-const char *ssid = "raspi-Wifi";
-const char *password = "sensarPWD";
+String ssid = "raspi-Wifi";
+String password = "sensarPWD";
 
-const char *soft_ap_ssid = "MyESP32AP";
-const char *soft_ap_password = "testpassword";
+String soft_ap_ssid = "MyESP32AP";
+String soft_ap_password = "testpassword";
 
 // const char *ssid = "iPhone Guillaume";
 // const char *password = "luminaire";
@@ -72,7 +72,7 @@ int r = 0;
 // Create AsyncWebServer object on port 80
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
-JSONVar prints;
+JsonDocument prints;
 
 RTC_DS3231 rtc;
 Adafruit_LSM6DSOX dsox; // accelerometer
@@ -119,12 +119,6 @@ String serverUID = serv + "postUID/";
 String serverVAR = serv + "postVAR/";
 
 void handleWebSocketMessage(void *arg, uint8_t *data, size_t len);
-
-String getStringPrints() {
-    prints["print"] = String(printInt++);
-    String jsonString = JSON.stringify(prints);
-    return jsonString;
-}
 
 void notifyClients(String stringPrints) {
     ws.textAll(stringPrints);
@@ -428,6 +422,20 @@ String ledProcessor(const String &var) {
 
         return (String(idRead));
     }
+    if (var == "SSID") {
+        preferences.begin("prefid", false);
+        String prefSSID = preferences.getString("SSID", ssid);
+        preferences.end();
+
+        return (String(prefSSID));
+    }
+    if (var == "PWD") {
+        preferences.begin("prefid", false);
+        String prefPWD = preferences.getString("PWD", password);
+        preferences.end();
+
+        return (String(prefPWD));
+    }
     if (var == "GENERAL") {
         return (String(genVar));
     }
@@ -456,82 +464,8 @@ void serverRoutes() {
         request->send(SPIFFS, "/style.css", "text/css");
     });
     server.on("/script.js", HTTP_GET, [](AsyncWebServerRequest *request) {
-        // Serial.println("script");
         request->send(SPIFFS, "/script.js", "text/javascript");
     });
-
-    // // Route to set GPIO to HIGH
-    // server.on("/on", HTTP_GET, [](AsyncWebServerRequest *request) {
-    //     neopixelWrite(LED, bright, 0, bright / 2); // rose
-    //     digitalWrite(ledPin, HIGH);
-    //     request->send(SPIFFS, "/index.html", String(), false, ledProcessor);
-    // });
-
-    // // Route to set GPIO to LOW
-    // server.on("/off", HTTP_GET, [](AsyncWebServerRequest *request) {
-    //     neopixelWrite(LED, 0, bright, bright); // cyan
-    //     digitalWrite(ledPin, LOW);
-    //     request->send(SPIFFS, "/index.html", String(), false, ledProcessor);
-    // });
-
-    // // Route to set alarm
-    // server.on("/rtc", HTTP_GET, [](AsyncWebServerRequest *request) {
-    //     goSleep(60);
-    //     request->send(SPIFFS, "/index.html");
-    // });
-
-    // // Route to set alarm
-    // server.on("/sync", HTTP_GET, [](AsyncWebServerRequest *request) {
-    //     syncRTC();
-    //     request->send(SPIFFS, "/index.html");
-    // });
-
-    // // Route to activate printing test
-    // server.on("/sick", HTTP_GET, [](AsyncWebServerRequest *request) {
-    //     bSick = !bSick;
-    //     digitalWrite(ON_SICK, bSick);
-    //     Serial.println("sick");
-    //     request->send(SPIFFS, "/index.html");
-    // });
-
-    // // Route to activate printing test
-    // server.on("/lsm", HTTP_GET, [](AsyncWebServerRequest *request) {
-    //     bLSM = !bLSM;
-    //     printInt = 0;
-    //     request->send(SPIFFS, "/index.html");
-    // });
-
-    // // Route to activate printing test
-    // server.on("/s_lsm", HTTP_GET, [](AsyncWebServerRequest *request) {
-    //     bS_LSM = true;
-    //     Serial.println("s_lsm");
-    //     request->send(SPIFFS, "/index.html");
-    // });
-
-    // // Route to activate printing test
-    // server.on("/s_adxl", HTTP_GET, [](AsyncWebServerRequest *request) {
-    //     bS_ADXL = true;
-    //     Serial.println("s_adxl");
-    //     request->send(SPIFFS, "/index.html");
-    // });
-
-    // // Route to activate printing test
-    // server.on("/s_sick", HTTP_GET, [](AsyncWebServerRequest *request) {
-    //     bS_SICK = true;
-    //     Serial.println("s_sick");
-    //     request->send(SPIFFS, "/index.html");
-    // });
-
-    // // Route to activate printing test
-    // server.on("/adxl", HTTP_GET, [](AsyncWebServerRequest *request) {
-    //     bADXL = !bADXL;
-    //     printInt = 0;
-    //     adxl.printSensorDetails();
-    //     displayDataRate();
-    //     Serial.println("");
-
-    //     request->send(SPIFFS, "/index.html");
-    // });
 
     // Route to list all files and folders
     server.on("/sd", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -544,23 +478,11 @@ void serverRoutes() {
 
     // Route to download file
     server.on("/download", HTTP_GET, [](AsyncWebServerRequest *request) {
-        // String filename = request->arg("filename");
-        // File file = SD.open(filename);
-        // Serial.println(filename);
-
-        // if (file) {
-        //     request->send(SD, filename, "text/plain", true);
-        //     file.close();
-        // } else {
-        //     request->send(404, "text/plain", "File not found");
-        // }
-
         int paramsNr = request->params();
         Serial.println(paramsNr);
         String downFile = "/1/test1.txt";
 
         for (int i = 0; i < paramsNr; i++) {
-
             AsyncWebParameter *p = request->getParam(i);
             Serial.print("Param name: ");
             Serial.println(p->name());
@@ -569,7 +491,6 @@ void serverRoutes() {
             Serial.println("------");
             downFile = p->value();
         }
-
         request->send(SD_MMC, downFile, "text/plain", true);
     });
 
@@ -622,10 +543,6 @@ void serverRoutes() {
         };
         request->redirect("/sd");
     });
-
-    // server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    //     request->send(200, "text/plain", "ESP test ok");
-    // });
 
     Serial.println("server ok");
 }
@@ -846,7 +763,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
         data[len] = 0;
         String message = (char *)data;
-        prints = JSONVar();
+        prints = JsonDocument();
         prints["print"] = message;
 
         if (message == "on") {
@@ -892,9 +809,11 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
             displayDataRate();
             Serial.println("");
         } else {
-            JSONVar myObject = JSON.parse((char *)data);
+            // JSONVar myObject = JSON.parse((char *)data);
+            JsonDocument myObject;
+            deserializeJson(myObject, data);
             // from https://github.com/arduino-libraries/Arduino_JSON/blob/master/examples/JSONObject/JSONObject.ino
-            if (myObject.hasOwnProperty("id")) {
+            if (myObject.containsKey("id")) {
                 prints["print"] = String((const char *)myObject["id"]).toInt();
 
                 id = String((const char *)myObject["id"]).toInt();
@@ -903,7 +822,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
                 preferences.putUInt("id", id);
                 preferences.end();
             }
-            if (myObject.hasOwnProperty("blink")) {
+            if (myObject.containsKey("blink")) {
                 prints["print"] = String((const char *)myObject["blink"]).toInt();
 
                 blink = String((const char *)myObject["blink"]).toInt();
@@ -912,56 +831,32 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
                 preferences.putUInt("blink", blink);
                 preferences.end();
             }
-            if (myObject.hasOwnProperty("gen")) {
+            if (myObject.containsKey("ssid")) {
+                prints["print"] = String((const char *)myObject["ssid"]);
+
+                ssid = (const char *)myObject["ssid"];
+
+                preferences.begin("prefid", false);
+                preferences.putString("SSID", ssid);
+                preferences.end();
+            }
+            if (myObject.containsKey("pwd")) {
+                prints["print"] = String((const char *)myObject["pwd"]);
+
+                password = (const char *)myObject["pwd"];
+
+                preferences.begin("prefid", false);
+                preferences.putString("PWD", password);
+                preferences.end();
+            }
+            if (myObject.containsKey("gen")) {
                 prints["print"] = String((const char *)myObject["gen"]).toInt();
                 genVar = String((const char *)myObject["gen"]).toInt();
             }
         }
 
-        // } else if (myObject.hasOwnProperty("led")) {
-        //     String col = String((const char *)myObject["led"]);
-        //     if (col == "on") {
-        //         neopixelWrite(LED, bright, 0, bright / 2); // rose
-        //     } else if (col == "off") {
-        //         neopixelWrite(LED, 0, bright, bright); // cyan
-        //     }
-        // } else if (myObject.hasOwnProperty("rtc")) {
-        //     String act = String((const char *)myObject["rtc"]);
-        //     if (act == "alarm") {
-        //         goSleep(60);
-        //     } else if (act == "sync") {
-        //         syncRTC();
-        //     }
-        // } else if (myObject.hasOwnProperty("sens")) {
-        //     String act = String((const char *)myObject["sens"]);
-        //     if (act == "sick") {
-        //         bSick = !bSick;
-        //         digitalWrite(ON_SICK, bSick);
-        //         Serial.println("sick");
-        //     } else if (act == "lsm") {
-        //         bLSM = !bLSM;
-        //         printInt = 0;
-        //     } else if (act == "adxl") {
-        //         bADXL = !bADXL;
-        //         adxl.printSensorDetails();
-        //         displayDataRate();
-        //         Serial.println("");
-        //     }
-        // } else if (myObject.hasOwnProperty("save")) {
-        //     String act = String((const char *)myObject["save"]);
-        //     if (act == "sick") {
-        //         bS_SICK = true;
-        //     } else if (act == "lsm") {
-        //         bS_LSM = true;
-        //     } else if (act == "adxl") {
-        //         bS_ADXL = true;
-        //     }
-        // } else {
-        //     Serial.println("failed ws");
-        //     prints["print"] = "failed";
-        // }
-
-        String stringPrints = JSON.stringify(prints);
+        String stringPrints;
+        serializeJson(prints, stringPrints);
         notifyClients(stringPrints);
         //}
     }
@@ -1016,6 +911,12 @@ void setup() {
     serverRoutes();
     bWifi = true;
     wifiTO = millis() + 30 * 1000;
+
+    // preferences.begin("prefid", false);
+    // ssid = preferences.getString("SSID", ssid);
+    // password = preferences.getString("PWD", password);
+    // preferences.end();
+
     // wifiConnect();
 
     color[0] = bright;
@@ -1140,10 +1041,17 @@ void sendBatt() {
 
 bool noFlask = false;
 int countFlask = 0;
-void sendFlask() {
-    int responseCode = httpPostRequest("http://chg.local:5000/batt", String(battSend) + "," + String(bWifi));
+int sendFlask() {
+    JsonDocument info;
+    info["batt"] = battSend;
+    info["bWifi"] = bWifi;
+    String infoPost;
+    serializeJson(info, infoPost);
+    int responseCode = httpPostRequest("http://chg.local:5000/batt", infoPost);
     Serial.println(responseCode);
     if (responseCode > 0) {
+        // connected flask on
+        bWifi = true;
         noFlask = false;
         color[0] = bright;
         color[1] = bright / 2;
@@ -1153,15 +1061,60 @@ void sendFlask() {
         if (manual) {
             manualTO = millis() + 30 * 1000;
         }
-        return;
+        return responseCode;
     } else if (responseCode == 0) {
-        return;
+        // connected flask on / no wifi
+        bWifi = false;
+        return responseCode;
     }
+    // connected flask off
     noFlask = true;
     color[0] = bright / 2;
     color[1] = 0;
     color[2] = bright / 2;
-    return;
+    return responseCode;
+}
+
+bool manageCOM() {
+    bool local = false; // chg ? listen : sleep; and try again later
+    bool wConnect = false;
+    wConnect = wifiConnect();
+    if (wConnect) {
+        int respFlask = sendFlask();
+        if (respFlask > 0) {
+            // flask on + wifi on
+            local = false;
+        } else {
+            // flask on or off / local true
+            local = true;
+        }
+    } else {
+        // not connected / local true
+        local = true;
+    }
+    return local;
+}
+
+int comTO = 30;
+
+bool manageLoop() {
+    /*
+    define timeouts until next try to communicate
+    define color of LED
+    */
+    bool local = manageCOM();
+    if (!local) {
+        // flask on
+        comTO = 10;
+    } else {
+        if (!chg) {
+            // sleep
+            goSleep(30);
+        } else {
+            // listen local
+            comTO = 60;
+        }
+    }
 }
 
 void loop() {
@@ -1243,8 +1196,12 @@ void loop() {
                     }
 
                     if (bADXL || bLSM || bBoot0Change || bSick) {
-                        String stringPrints = JSON.stringify(prints);
+                        String stringPrints;
+                        serializeJson(prints, stringPrints);
                         notifyClients(stringPrints);
+
+                        // String stringPrints = JSON.stringify(prints);
+                        // notifyClients(stringPrints);
                         lastTime = millis();
                     }
                 }
