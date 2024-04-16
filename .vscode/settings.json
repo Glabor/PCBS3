@@ -1,3 +1,7 @@
 {
-    "liveServer.settings.port": 5501
+    "liveServer.settings.port": 5501,
+    "editor.showUnused": true,
+    "workbench.colorCustomizations": {
+        "editorUnnecessaryCode.opacity": "#0000005F"
+    },
 }
