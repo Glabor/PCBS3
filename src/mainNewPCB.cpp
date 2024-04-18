@@ -195,6 +195,8 @@ bool sdmmcSetup() {
     }
     if (!SD_MMC.begin("/sdcard", true, false, 20000, 5)) {
         Serial.println("Card Mount Failed");
+        neopixelWrite(LED, 0, bright, bright);
+        delay(500);
         return false;
     }
     return true;
